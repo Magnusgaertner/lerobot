@@ -31,21 +31,37 @@ class MG3000(Robot):
         super().__init__(config)
         self.config = config
         norm_mode_body = MotorNormMode.DEGREES if config.use_degrees else MotorNormMode.RANGE_M100_100
-        self.bus = FeetechMotorsBus(
+        # Define motors for each protocol
+        motors_p0 = {
+            "shoulder_pan": Motor(1, "sts3215", norm_mode_body),
+            "shoulder_lift": Motor(2, "sts3215", norm_mode_body),
+            "underarm_yaw": Motor(3, "sts3215", norm_mode_body),
+            "elbow_flex": Motor(4, "sts3215", norm_mode_body),
+            "forearm_yaw": Motor(5, "sts3215", norm_mode_body),
+            "wrist_lift": Motor(6, "sts3215", norm_mode_body),
+            "wrist_roll": Motor(7, "sts3215", norm_mode_body),
+        }
+        motors_p1 = {
+            "gripper_left": Motor(8, "scs0009", MotorNormMode.RANGE_0_100),
+            "gripper_right": Motor(9, "scs0009", MotorNormMode.RANGE_0_100),
+        }
+        from lerobot.motors.feetech import FeetechMotorsBus
+        from lerobot.motors.multi_protocol_motor_bus import MultiProtocolMotorBus
+        bus_p0 = FeetechMotorsBus(
             port=self.config.port,
-                motors={
-                    "shoulder_pan": Motor(1, "sts3215", norm_mode_body),
-                    "shoulder_lift": Motor(2, "sts3215", norm_mode_body),
-                    "underarm_yaw": Motor(3, "sts3215", norm_mode_body),
-                    "elbow_flex": Motor(4, "sts3215", norm_mode_body),
-                    "forearm_yaw": Motor(5, "sts3215", norm_mode_body),
-                    "wrist_lift": Motor(6, "sts3215", norm_mode_body),
-                    "wrist_roll": Motor(7, "sts3215", norm_mode_body),
-                    "gripper_left": Motor(8, "scs09", MotorNormMode.RANGE_0_100),
-                    "gripper_right": Motor(9, "scs09", MotorNormMode.RANGE_0_100),
-                },
+            motors=motors_p0,
             calibration=self.calibration,
+            protocol_version=0,
         )
+        bus_p1 = FeetechMotorsBus(
+            port=self.config.port,
+            motors=motors_p1,
+            calibration=self.calibration,
+            protocol_version=1,
+        )
+        # Map each motor to its bus
+        motor_to_bus = {**{k: "p0" for k in motors_p0}, **{k: "p1" for k in motors_p1}}
+        self.bus = MultiProtocolMotorBus(buses={"p0": bus_p0, "p1": bus_p1}, motor_to_bus=motor_to_bus)
         self.cameras = {}  # Add camera support if needed
 
     @property
