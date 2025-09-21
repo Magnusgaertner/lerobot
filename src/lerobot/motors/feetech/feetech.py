@@ -124,13 +124,14 @@ class FeetechMotorsBus(MotorsBus):
         self.protocol_version = protocol_version
         self._assert_same_protocol()
         import scservo_sdk as scs
+        from .safe_packet_handler import SafePacketHandler
 
         self.port_handler = scs.PortHandler(self.port)
         # HACK: monkeypatch
         self.port_handler.setPacketTimeout = patch_setPacketTimeout.__get__(
             self.port_handler, scs.PortHandler
         )
-        self.packet_handler = scs.PacketHandler(protocol_version)
+        self.packet_handler = SafePacketHandler(protocol_version)
         self.sync_reader = scs.GroupSyncRead(self.port_handler, self.packet_handler, 0, 0)
         self.sync_writer = scs.GroupSyncWrite(self.port_handler, self.packet_handler, 0, 0)
         self._comm_success = scs.COMM_SUCCESS
@@ -155,7 +156,7 @@ class FeetechMotorsBus(MotorsBus):
 
     def _assert_same_firmware(self) -> None:
         firmware_versions = self._read_firmware_version(self.ids, raise_on_error=True)
-        if len(set(firmware_versions.values())) != 1:
+        if len(set(firmware_versions.values())) != 1 and len(self.ids) > 1:
             raise RuntimeError(
                 "Some Motors use different firmware versions:"
                 f"\n{pformat(firmware_versions)}\n"
@@ -315,6 +316,7 @@ class FeetechMotorsBus(MotorsBus):
             encoding_table = self.model_encoding_table.get(model)
             if encoding_table and data_name in encoding_table:
                 sign_bit = encoding_table[data_name]
+                print(f"id_={id_}, data_name={data_name}, sign_bit={sign_bit}, value={ids_values[id_]}")
                 ids_values[id_] = encode_sign_magnitude(ids_values[id_], sign_bit)
 
         return ids_values

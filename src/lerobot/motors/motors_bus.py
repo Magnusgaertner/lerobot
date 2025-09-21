@@ -429,9 +429,12 @@ class MotorsBus(abc.ABC):
             ConnectionError: The underlying SDK failed to open the port or the handshake did not succeed.
         """
         if self.is_connected:
-            raise DeviceAlreadyConnectedError(
-                f"{self.__class__.__name__}('{self.port}') is already connected. Do not call `{self.__class__.__name__}.connect()` twice."
-            )
+            print(f"{self.port} already connected")
+            return 
+
+            # raise DeviceAlreadyConnectedError(
+            #     f"{self.__class__.__name__}('{self.port}') is already connected. Do not call `{self.__class__.__name__}.connect()` twice."
+            # )
 
         self._connect(handshake)
         self.set_timeout()
@@ -709,6 +712,7 @@ class MotorsBus(abc.ABC):
             raise TypeError(motors)
 
         self.reset_calibration(motors)
+        
         actual_positions = self.sync_read("Present_Position", motors, normalize=False)
         homing_offsets = self._get_half_turn_homings(actual_positions)
         for motor, offset in homing_offsets.items():
@@ -744,16 +748,32 @@ class MotorsBus(abc.ABC):
         elif not isinstance(motors, list):
             raise TypeError(motors)
 
-        start_positions = self.sync_read("Present_Position", motors, normalize=False)
+        if self.packet_handler.protocol_version != 1:
+            start_positions = self.sync_read("Present_Position", motors, normalize=False)
+        else:
+            # Protocol 1.0 does not support sync read, so we read each motor individually
+            start_positions = {motor: self.read("Present_Position", motor, normalize=False) for motor in motors}
         mins = start_positions.copy()
         maxes = start_positions.copy()
+        last_positions = start_positions.copy()
 
         user_pressed_enter = False
         while not user_pressed_enter:
-            positions = self.sync_read("Present_Position", motors, normalize=False)
+            if self.packet_handler.protocol_version != 1:
+                positions = self.sync_read("Present_Position", motors, normalize=False)
+            else:
+                positions = {motor: self.read("Present_Position", motor, normalize=False) for motor in motors}
             mins = {motor: min(positions[motor], min_) for motor, min_ in mins.items()}
             maxes = {motor: max(positions[motor], max_) for motor, max_ in maxes.items()}
-
+            # double check large jumps fail if we jump more than 200 steps
+            for motor in motors:
+                if abs(positions[motor] - last_positions[motor]) > 200:
+                    raise RuntimeError(
+                        f"Aborting: Large jump detected on motor '{motor}' ({last_positions[motor]} → {positions[motor]})."
+                        " Make sure to move the motors slowly by hand / change the homing in hardware."
+                    )
+                
+            last_positions = positions.copy()
             if display_values:
                 print("\n-------------------------------------------")
                 print(f"{'NAME':<15} | {'MIN':>6} | {'POS':>6} | {'MAX':>6}")

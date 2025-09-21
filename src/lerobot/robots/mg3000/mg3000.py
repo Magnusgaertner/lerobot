@@ -33,35 +33,38 @@ class MG3000(Robot):
         norm_mode_body = MotorNormMode.DEGREES if config.use_degrees else MotorNormMode.RANGE_M100_100
         # Define motors for each protocol
         motors_p0 = {
-            "shoulder_pan": Motor(1, "sts3215", norm_mode_body),
-            "shoulder_lift": Motor(2, "sts3215", norm_mode_body),
-            "underarm_yaw": Motor(3, "sts3215", norm_mode_body),
-            "elbow_flex": Motor(4, "sts3215", norm_mode_body),
-            "forearm_yaw": Motor(5, "sts3215", norm_mode_body),
-            "wrist_lift": Motor(6, "sts3215", norm_mode_body),
+            # "shoulder_pan": Motor(1, "sts3215", norm_mode_body),
+            # "shoulder_lift": Motor(2, "sts3215", norm_mode_body),
+            # "underarm_yaw": Motor(3, "sts3215", norm_mode_body),
+            # "elbow_flex": Motor(4, "sts3215", norm_mode_body),
+            # "forearm_yaw": Motor(5, "sts3215", norm_mode_body),
+            # "wrist_lift": Motor(6, "sts3215", norm_mode_body),
             "wrist_roll": Motor(7, "sts3215", norm_mode_body),
         }
         motors_p1 = {
-            "gripper_left": Motor(8, "scs0009", MotorNormMode.RANGE_0_100),
-            "gripper_right": Motor(9, "scs0009", MotorNormMode.RANGE_0_100),
+            "gripper_left": Motor(1, "scs0009", MotorNormMode.RANGE_0_100),
+            # "gripper_right": Motor(9, "scs0009", MotorNormMode.RANGE_0_100),
         }
         from lerobot.motors.feetech import FeetechMotorsBus
         from lerobot.motors.multi_protocol_motor_bus import MultiProtocolMotorBus
-        bus_p0 = FeetechMotorsBus(
+        self.bus_base = FeetechMotorsBus(
             port=self.config.port,
             motors=motors_p0,
             calibration=self.calibration,
             protocol_version=0,
         )
-        bus_p1 = FeetechMotorsBus(
+        self.bus_gripper = FeetechMotorsBus(
             port=self.config.port,
             motors=motors_p1,
             calibration=self.calibration,
             protocol_version=1,
         )
         # Map each motor to its bus
-        motor_to_bus = {**{k: "p0" for k in motors_p0}, **{k: "p1" for k in motors_p1}}
-        self.bus = MultiProtocolMotorBus(buses={"p0": bus_p0, "p1": bus_p1}, motor_to_bus=motor_to_bus)
+        motor_to_bus = {**{k: "base" for k in motors_p0}, **{k: "gripper" for k in motors_p1}}
+        self.bus = MultiProtocolMotorBus(buses={
+            "base": self.bus_base,
+            "gripper": self.bus_gripper
+        }, motor_to_bus=motor_to_bus)
         self.cameras = {}  # Add camera support if needed
 
     @property
@@ -101,18 +104,24 @@ class MG3000(Robot):
         return self.bus.is_calibrated
 
     def calibrate(self) -> None:
-        # Simple calibration logic, can be expanded as needed
+        # disable torque before calibration
         self.bus.disable_torque()
-        for motor in self.bus.motors:
-            self.bus.write("Operating_Mode", motor, 1)  # Assuming 1 is POSITION mode
-        homing_offsets = self.bus.set_half_turn_homings()
+
+        for motor in self.bus_base.motors:
+            self.bus.write("Operating_Mode", motor, OperatingMode.POSITION.value) 
+
+        homing_offsets = self.bus_base.set_half_turn_homings()
+
         range_mins, range_maxes = self.bus.record_ranges_of_motion(list(self.bus.motors))
+        print(homing_offsets)
+        print(range_mins, range_maxes)
+
         self.calibration = {}
         for motor, m in self.bus.motors.items():
             self.calibration[motor] = MotorCalibration(
                 id=m.id,
                 drive_mode=0,
-                homing_offset=homing_offsets[motor],
+                homing_offset=homing_offsets.get(motor, 0),
                 range_min=range_mins[motor],
                 range_max=range_maxes[motor],
             )
@@ -120,16 +129,17 @@ class MG3000(Robot):
 
     def configure(self) -> None:
         with self.bus.torque_disabled():
-            self.bus.configure_motors()
-            for motor in self.bus.motors:
-                self.bus.write("Operating_Mode", motor, 1)
-                self.bus.write("P_Coefficient", motor, 16)
-                self.bus.write("I_Coefficient", motor, 0)
-                self.bus.write("D_Coefficient", motor, 32)
-                if motor.startswith("gripper"):
-                    self.bus.write("Max_Torque_Limit", motor, 500)
-                    self.bus.write("Protection_Current", motor, 250)
-                    self.bus.write("Overload_Torque", motor, 25)
+            self.bus_base.configure_motors()
+            for motor in self.bus_base.motors:
+                joint_cfg = self.config.joints.get(motor, {})
+                self.bus.write("Operating_Mode", motor, OperatingMode.POSITION.value)
+                self.bus.write("P_Coefficient", motor, joint_cfg.p)
+                self.bus.write("I_Coefficient", motor, joint_cfg.i)
+                self.bus.write("D_Coefficient", motor, joint_cfg.d)
+                self.bus.write("Max_Torque_Limit", motor, joint_cfg.max_torque)
+                self.bus.write("Maximum_Velocity_Limit", motor, joint_cfg.max_velocity)
+                self.bus.write("Maximum_Acceleration", motor, joint_cfg.max_acceleration)
+ 
 
     def get_observation(self) -> dict[str, float]:
         if not self.is_connected:
@@ -155,6 +165,6 @@ class MG3000(Robot):
     def disconnect(self):
         if not self.is_connected:
             raise Exception(f"{self} is not connected.")
-        self.bus.disconnect(self.config.disable_torque_on_disconnect)
+        self.bus.disconnect()
         for cam in self.cameras.values():
             cam.disconnect()

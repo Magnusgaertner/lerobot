@@ -68,7 +68,7 @@ class CalibrateConfig:
         self.device = self.robot if self.robot else self.teleop
 
 
-@draccus.wrap()
+@draccus.wrap(config_path="/home/magnus/waveshare_driver/ExternalImplementations/lerobot/src/lerobot/robots/mg3000/mg3000_calibrate_config.yaml")
 def calibrate(cfg: CalibrateConfig):
     init_logging()
     logging.info(pformat(asdict(cfg)))
