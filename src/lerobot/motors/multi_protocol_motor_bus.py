@@ -24,6 +24,13 @@ class MultiProtocolMotorBus:
         for bus in self.buses.values():
             all_motors.update(bus.motors)
         return all_motors
+    
+    @property
+    def model_resolution_table(self) -> dict:
+        resolution_table = {}
+        for bus in self.buses.values():
+            resolution_table.update(getattr(bus, "model_resolution_table", {}))
+        return resolution_table
     """
     High-level wrapper for multiple MotorsBus instances, each handling a different protocol.
     Routes commands to the correct bus based on motor name.
@@ -236,6 +243,7 @@ class MultiProtocolMotorBus:
                 for m, v in calibration_dict.items()
                 if self.motor_to_bus[m] == bus_name
             }
+            print(f"Bus {bus_name} calibration: {bus_calib}")
             if bus_calib:
                 bus.write_calibration(bus_calib, cache)
 

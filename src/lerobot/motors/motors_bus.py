@@ -34,6 +34,7 @@ from tqdm import tqdm
 
 from lerobot.errors import DeviceAlreadyConnectedError, DeviceNotConnectedError
 from lerobot.utils.utils import enter_pressed, move_cursor_up
+import scservo_sdk as scs
 
 NameOrID: TypeAlias = str | int
 Value: TypeAlias = int | float
@@ -1032,6 +1033,8 @@ class MotorsBus(abc.ABC):
 
         id_ = self.motors[motor].id
         model = self.motors[motor].model
+        # todo hack for stuff, otherwise we do not change the protocol version on the fly...
+        scs.SCS_SETEND(1 if model.startswith("scs") else 0)
         addr, length = get_address(self.model_ctrl_table, model, data_name)
 
         if normalize and data_name in self.normalized_data:

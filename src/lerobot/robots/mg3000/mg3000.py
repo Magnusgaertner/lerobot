@@ -17,6 +17,7 @@
 import logging
 from functools import cached_property
 from lerobot.motors import Motor, MotorCalibration, MotorNormMode
+from lerobot.motors.calibration_gui import RangeFinderGUI
 from lerobot.motors.feetech import FeetechMotorsBus, OperatingMode
 from ..robot import Robot
 from .config_mg3000 import MG3000Config
@@ -103,7 +104,7 @@ class MG3000(Robot):
     def is_calibrated(self) -> bool:
         return self.bus.is_calibrated
 
-    def calibrate(self) -> None:
+    def calibrate_old(self) -> None:
         # disable torque before calibration
         self.bus.disable_torque()
 
@@ -126,6 +127,16 @@ class MG3000(Robot):
                 range_max=range_maxes[motor],
             )
         self.bus.write_calibration(self.calibration)
+    def calibrate(self):
+        with self.bus.torque_disabled():
+            groups = {
+                "base": list(self.bus_base.motors.keys()),
+                "gripper": list(self.bus_gripper.motors.keys()),
+            }
+
+            self.calibration = RangeFinderGUI(self.bus, groups).run()
+            self._save_calibration(fpath=self.calibration_fpath)
+            print("Calibration saved to", self.calibration_fpath)
 
     def configure(self) -> None:
         with self.bus.torque_disabled():

@@ -68,7 +68,7 @@ class TorqueMode(Enum):
 
 def _split_into_byte_chunks(value: int, length: int) -> list[int]:
     import scservo_sdk as scs
-
+ 
     if length == 1:
         data = [value]
     elif length == 2:
@@ -275,6 +275,8 @@ class FeetechMotorsBus(MotorsBus):
         for motor, calibration in calibration_dict.items():
             if self.protocol_version == 0:
                 self.write("Homing_Offset", motor, calibration.homing_offset)
+            # HACK, double write otherwise the protocol is not respected...
+            self.write("Min_Position_Limit", motor, calibration.range_min)
             self.write("Min_Position_Limit", motor, calibration.range_min)
             self.write("Max_Position_Limit", motor, calibration.range_max)
 

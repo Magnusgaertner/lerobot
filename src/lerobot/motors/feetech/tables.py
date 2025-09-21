@@ -188,7 +188,7 @@ MODEL_RESOLUTION = {
     "sts_series": 4096,
     "sms_series": 4096,
     "scs_series": 1024,
-    "sts3215": 4096,
+    "sts3215": 65536,
     "sts3215-191": 4096,
     "sts3250": 4096,
     "sm8512bl": 4096,
@@ -208,20 +208,23 @@ MODEL_BAUDRATE_TABLE = {
 
 # Sign-Magnitude encoding bits
 STS_SMS_SERIES_ENCODINGS_TABLE = {
-    "Homing_Offset": 15,
+    "Homing_Offset": 11,
     "Goal_Velocity": 15,
     "Present_Velocity": 15,
+}
+
+SCS_SERIES_ENCODINGS_TABLE = { # currently empty. 
 }
 
 MODEL_ENCODING_TABLE = {
     "sts_series": STS_SMS_SERIES_ENCODINGS_TABLE,
     "sms_series": STS_SMS_SERIES_ENCODINGS_TABLE,
-    "scs_series": {},
+    "scs_series": SCS_SERIES_ENCODINGS_TABLE,
     "sts3215": STS_SMS_SERIES_ENCODINGS_TABLE,
     "sts3215-191": STS_SMS_SERIES_ENCODINGS_TABLE,
     "sts3250": STS_SMS_SERIES_ENCODINGS_TABLE,
     "sm8512bl": STS_SMS_SERIES_ENCODINGS_TABLE,
-    "scs0009": {},
+    "scs0009": SCS_SERIES_ENCODINGS_TABLE,
 }
 
 SCAN_BAUDRATES = [
