@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from typing import Dict, Any
+from lerobot.motors.feetech.tables import MODEL_ENCODING_TABLE
 from lerobot.motors.motors_bus import MotorsBus
 from contextlib import contextmanager, ExitStack
 
@@ -31,6 +32,9 @@ class MultiProtocolMotorBus:
         for bus in self.buses.values():
             resolution_table.update(getattr(bus, "model_resolution_table", {}))
         return resolution_table
+    
+    model_encoding_table = MODEL_ENCODING_TABLE
+    
     """
     High-level wrapper for multiple MotorsBus instances, each handling a different protocol.
     Routes commands to the correct bus based on motor name.

@@ -5,16 +5,16 @@ robot:
   id: "mg3000_1"
   joints:
     wrist_roll:
-      max_torque: 1000 # in promille of max torque
-      p: 10
-      i: 0
-      d: 10
-      max_velocity: 50 # in ticks/s
-      max_acceleration: 20 # in ticks/s^2
+      Torque_Limit: 150 # in promille of max torque
+      P_Coefficient: 10
+      I_Coefficient: 0
+      D_Coefficient: 10
+      Goal_Velocity: 0 # in ticks/s
+      Acceleration: 15 # in ticks/s^2
     gripper_left:
-      max_torque: 1000
-      p: 20
-      i: 0
-      d: 20
-      max_velocity: 50
-      max_acceleration: 20
+      Max_Torque_Limit: 50
+      P_Coefficient: 20
+      I_Coefficient: 0
+      D_Coefficient: 20
+      Goal_Velocity: 0
+      Acceleration: 0

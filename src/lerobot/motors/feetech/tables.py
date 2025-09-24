@@ -211,6 +211,8 @@ STS_SMS_SERIES_ENCODINGS_TABLE = {
     "Homing_Offset": 11,
     "Goal_Velocity": 15,
     "Present_Velocity": 15,
+    "Present_Position": 15,
+    "Goal_Position": 15,
 }
 
 SCS_SERIES_ENCODINGS_TABLE = { # currently empty. 

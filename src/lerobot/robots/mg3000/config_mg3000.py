@@ -17,15 +17,6 @@
 from dataclasses import dataclass, field
 from typing import Dict
 
-@dataclass
-class JointConfig:
-    max_torque: int = 100
-    p: int = 0
-    i: int = 0
-    d: int = 0
-    max_velocity: int = 0
-    max_acceleration: int = 0
-
 from lerobot.cameras import CameraConfig
 from ..config import RobotConfig
 
@@ -37,4 +28,4 @@ class MG3000Config(RobotConfig):
     max_relative_target: float | Dict[str, float] | None = None
     cameras: Dict[str, CameraConfig] = field(default_factory=dict)
     use_degrees: bool = False
-    joints: Dict[str, JointConfig] = field(default_factory=dict)
+    joints: Dict[str, dict] = field(default_factory=dict)

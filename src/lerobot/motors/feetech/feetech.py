@@ -41,6 +41,7 @@ NORMALIZED_DATA = ["Goal_Position", "Present_Position"]
 
 logger = logging.getLogger(__name__)
 
+import scservo_sdk as scs
 
 class OperatingMode(Enum):
     # position servo mode
@@ -64,24 +65,7 @@ class DriveMode(Enum):
 class TorqueMode(Enum):
     ENABLED = 1
     DISABLED = 0
-
-
-def _split_into_byte_chunks(value: int, length: int) -> list[int]:
-    import scservo_sdk as scs
- 
-    if length == 1:
-        data = [value]
-    elif length == 2:
-        data = [scs.SCS_LOBYTE(value), scs.SCS_HIBYTE(value)]
-    elif length == 4:
-        data = [
-            scs.SCS_LOBYTE(scs.SCS_LOWORD(value)),
-            scs.SCS_HIBYTE(scs.SCS_LOWORD(value)),
-            scs.SCS_LOBYTE(scs.SCS_HIWORD(value)),
-            scs.SCS_HIBYTE(scs.SCS_HIWORD(value)),
-        ]
-    return data
-
+    DAMPED = 2
 
 def patch_setPacketTimeout(self, packet_length):  # noqa: N802
     """
@@ -123,17 +107,15 @@ class FeetechMotorsBus(MotorsBus):
         super().__init__(port, motors, calibration)
         self.protocol_version = protocol_version
         self._assert_same_protocol()
-        import scservo_sdk as scs
-        from .safe_packet_handler import SafePacketHandler
 
         self.port_handler = scs.PortHandler(self.port)
         # HACK: monkeypatch
         self.port_handler.setPacketTimeout = patch_setPacketTimeout.__get__(
             self.port_handler, scs.PortHandler
         )
-        self.packet_handler = SafePacketHandler(protocol_version)
-        self.sync_reader = scs.GroupSyncRead(self.port_handler, self.packet_handler, 0, 0)
-        self.sync_writer = scs.GroupSyncWrite(self.port_handler, self.packet_handler, 0, 0)
+        self.packet_handler = scs.protocol_packet_handler(protocol_version)
+        self.sync_reader = scs.GroupSyncRead(self.packet_handler, 0, 0)
+        self.sync_writer = scs.GroupSyncWrite(self.packet_handler, 0, 0)
         self._comm_success = scs.COMM_SUCCESS
         self._no_error = 0x00
 
@@ -275,10 +257,16 @@ class FeetechMotorsBus(MotorsBus):
         for motor, calibration in calibration_dict.items():
             if self.protocol_version == 0:
                 self.write("Homing_Offset", motor, calibration.homing_offset)
-            # HACK, double write otherwise the protocol is not respected...
-            self.write("Min_Position_Limit", motor, calibration.range_min)
-            self.write("Min_Position_Limit", motor, calibration.range_min)
-            self.write("Max_Position_Limit", motor, calibration.range_max)
+            # HACK, can not limit negative positions on protocol 0
+            if self.protocol_version == 0:
+                range_min = 0 
+                range_max = 0 
+            else:
+                range_min = calibration.range_min
+                range_max = calibration.range_max
+
+            self.write("Min_Position_Limit", motor, range_min)
+            self.write("Max_Position_Limit", motor, range_max)
 
         if cache:
             self.calibration = calibration_dict
@@ -318,7 +306,7 @@ class FeetechMotorsBus(MotorsBus):
             encoding_table = self.model_encoding_table.get(model)
             if encoding_table and data_name in encoding_table:
                 sign_bit = encoding_table[data_name]
-                print(f"id_={id_}, data_name={data_name}, sign_bit={sign_bit}, value={ids_values[id_]}")
+                # print(f"id_={id_}, data_name={data_name}, sign_bit={sign_bit}, value={ids_values[id_]}")
                 ids_values[id_] = encode_sign_magnitude(ids_values[id_], sign_bit)
 
         return ids_values
@@ -334,7 +322,25 @@ class FeetechMotorsBus(MotorsBus):
         return ids_values
 
     def _split_into_byte_chunks(self, value: int, length: int) -> list[int]:
-        return _split_into_byte_chunks(value, length)
+        lobyte = self.packet_handler.scs_lobyte
+        hibyte = self.packet_handler.scs_hibyte
+        loword = self.packet_handler.scs_loword
+        hiword = self.packet_handler.scs_hiword
+
+        if length == 1:
+            data = [value]
+        elif length == 2:
+            data = [lobyte(value), hibyte(value)]
+        elif length == 4:
+            data = [
+                lobyte(loword(value)),
+                hibyte(loword(value)),
+                lobyte(hiword(value)),
+                hibyte(hiword(value)),
+            ]
+        else:
+            raise ValueError(f"Unsupported length {length} (only 1, 2 or 4 supported)")
+        return data
 
     def _broadcast_ping(self) -> tuple[dict[int, int], int]:
         import scservo_sdk as scs

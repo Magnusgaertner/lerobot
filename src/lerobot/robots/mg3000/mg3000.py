@@ -22,6 +22,9 @@ from lerobot.motors.feetech import FeetechMotorsBus, OperatingMode
 from ..robot import Robot
 from .config_mg3000 import MG3000Config
 
+from lerobot.motors.feetech import FeetechMotorsBus
+from lerobot.motors.multi_protocol_motor_bus import MultiProtocolMotorBus
+
 logger = logging.getLogger(__name__)
 
 class MG3000(Robot):
@@ -46,8 +49,7 @@ class MG3000(Robot):
             "gripper_left": Motor(1, "scs0009", MotorNormMode.RANGE_0_100),
             # "gripper_right": Motor(9, "scs0009", MotorNormMode.RANGE_0_100),
         }
-        from lerobot.motors.feetech import FeetechMotorsBus
-        from lerobot.motors.multi_protocol_motor_bus import MultiProtocolMotorBus
+
         self.bus_base = FeetechMotorsBus(
             port=self.config.port,
             motors=motors_p0,
@@ -137,19 +139,17 @@ class MG3000(Robot):
             self.calibration = RangeFinderGUI(self.bus, groups).run()
             self._save_calibration(fpath=self.calibration_fpath)
             print("Calibration saved to", self.calibration_fpath)
+    
 
     def configure(self) -> None:
         with self.bus.torque_disabled():
             self.bus_base.configure_motors()
             for motor in self.bus_base.motors:
+                print(f"Configuring {motor}")
                 joint_cfg = self.config.joints.get(motor, {})
-                self.bus.write("Operating_Mode", motor, OperatingMode.POSITION.value)
-                self.bus.write("P_Coefficient", motor, joint_cfg.p)
-                self.bus.write("I_Coefficient", motor, joint_cfg.i)
-                self.bus.write("D_Coefficient", motor, joint_cfg.d)
-                self.bus.write("Max_Torque_Limit", motor, joint_cfg.max_torque)
-                self.bus.write("Maximum_Velocity_Limit", motor, joint_cfg.max_velocity)
-                self.bus.write("Maximum_Acceleration", motor, joint_cfg.max_acceleration)
+                for key, value in joint_cfg.items():
+                    self.bus.write(key, motor, value)
+                print(f"Configured {motor} with {joint_cfg}")
  
 
     def get_observation(self) -> dict[str, float]:

@@ -56,11 +56,13 @@ class RangeValues:
 class RangeSlider:
     """One motor = one slider row"""
 
-    def __init__(self, motor, idx, res, calibration, present, label_pad, base_y):
+    def __init__(self, motor, idx, min_val, max_val, calibration, present, label_pad, base_y):
         import pygame
 
         self.motor = motor
-        self.res = res
+        self.min_limit = min_val
+        self.max_limit = max_val
+        self.span = max_val - min_val
         self.x0 = 40 + label_pad
         self.x1 = self.x0 + BAR_LEN
         self.y = base_y + idx * PADDING_Y
@@ -81,13 +83,13 @@ class RangeSlider:
         self.font = pygame.font.Font(None, FONT_SIZE)
 
     def _val_from_pos(self, x):
-        return round((x - self.x0) / BAR_LEN * self.res)
+        return max(self.min_limit, min(self.max_limit, round((x - self.x0) / BAR_LEN * self.span + self.min_limit)))
 
     def _pos_from_val(self, v):
-        return self.x0 + (v / self.res) * BAR_LEN
+        return self.x0 + ((v - self.min_limit) / self.span) * BAR_LEN
 
     def set_tick(self, v):
-        self.tick_val = max(0, min(v, self.res))
+        self.tick_val = max(self.min_limit, min(v, self.max_limit))
 
     def _triangle_hit(self, pos):
         import pygame
@@ -122,7 +124,11 @@ class RangeSlider:
             elif self.drag_max:
                 self.max_x = min(self.x1, max(x, self.pos_x))
             elif self.drag_pos:
-                self.pos_x = max(self.min_x, min(x, self.max_x))
+                # print(self.min_x, self.max_x)  # debug
+                if self.min_x == self.max_x:  # disabled limits
+                    self.pos_x = x
+                else:
+                   self.pos_x = max(self.min_x, min(x, self.max_x))
 
             self.min_v = self._val_from_pos(self.min_x)
             self.max_v = self._val_from_pos(self.max_x)
@@ -229,6 +235,7 @@ class RangeFinderGUI:
 
         self.calibration = bus.read_calibration()
         self.res_table = bus.model_resolution_table
+        self.encoding_table = bus.model_encoding_table
         self.present_cache = {
             m: bus.read("Present_Position", m, normalize=False) for motors in groups.values() for m in motors
         }
@@ -249,6 +256,7 @@ class RangeFinderGUI:
         # ui rects
         self.save_btn = pygame.Rect(width - SAVE_W - 10, 10, SAVE_W, SAVE_H)
         self.load_btn = pygame.Rect(self.save_btn.left - LOAD_W - 10, 10, LOAD_W, SAVE_H)
+        self.configure_btn = pygame.Rect(10, 10, LOAD_W, SAVE_H)
         self.dd_btn = pygame.Rect(width // 2 - DD_W // 2, 10, DD_W, DD_H)
         self.dd_open = False  # dropdown expanded?
 
@@ -269,11 +277,22 @@ class RangeFinderGUI:
         self.sliders: list[RangeSlider] = []
         motors = self.groups[self.current_group]
         for i, m in enumerate(motors):
+            res = self.res_table.get(self.bus.motors[m].model)
+            signed = self.encoding_table.get(self.bus.motors[m].model, {}).get("Present_Position", None) is not None
+
+            if signed: 
+                min_val = -(res // 2) + 1
+                max_val = (res // 2) - 1
+            else:
+                min_val = 0
+                max_val = res - 1
+
             self.sliders.append(
                 RangeSlider(
                     motor=m,
                     idx=i,
-                    res=self.res_table[self.bus.motors[m].model] - 1,
+                    min_val=min_val,
+                    max_val=max_val,
                     calibration=self.calibration[m],
                     present=self.present_cache[m],
                     label_pad=self.label_pad,
@@ -351,8 +370,21 @@ class RangeFinderGUI:
             s.min_x = s._pos_from_val(s.min_v)
             s.max_x = s._pos_from_val(s.max_v)
 
+    def _configure_current(self):
+        import yaml
+        with open("/home/magnus/waveshare_driver/ExternalImplementations/lerobot/src/lerobot/robots/mg3000/mg3000_calibrate_config.yaml", "r") as f:
+            config = yaml.safe_load(f)["robot"]["joints"]
+        with self.bus.torque_disabled():
+            for s in self.sliders:
+                motor_config = config.get(s.motor, {})
+                print(f"Configuring {s.motor}, config is {config.get(s.motor, {})}")
+                for key, val in motor_config.items():
+                    self.bus.write(key, s.motor, val)
+                    
     def run(self) -> dict[str, MotorCalibration]:
         import pygame
+        for motor in self.bus.motors:
+            self.bus.write("Torque_Enable", motor, 0)  # enable torque
 
         while True:
             for e in pygame.event.get():
@@ -368,6 +400,8 @@ class RangeFinderGUI:
                         self._save_current()
                     elif self.load_btn.collidepoint(e.pos):
                         self._load_current()
+                    elif self.configure_btn.collidepoint(e.pos):
+                        self._configure_current()
 
                 for s in self.sliders:
                     s.handle_event(e)
@@ -391,7 +425,7 @@ class RangeFinderGUI:
             self._draw_dropdown()
 
             # load / save buttons
-            for rect, text in ((self.load_btn, "LOAD"), (self.save_btn, "SAVE")):
+            for rect, text in ((self.load_btn, "LOAD"), (self.save_btn, "SAVE"), (self.configure_btn, "CONFIGURE")):
                 clr = BTN_COLOR_HL if rect.collidepoint(pygame.mouse.get_pos()) else BTN_COLOR
                 pygame.draw.rect(self.screen, clr, rect, border_radius=6)
                 t = self.font.render(text, True, TEXT_COLOR)
